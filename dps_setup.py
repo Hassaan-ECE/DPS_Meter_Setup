@@ -85,12 +85,95 @@ PROTECTED = {'RANGE', 'AZERO', 'ASPAN', 'CJC', 'BAUD', 'PARI', 'ADDR'}
 # set them from the front panel.
 PANEL_ONLY = {name for name, (_, n, _) in REGS.items() if n == 2}
 
+# Settings this script may write, with the valid range from the register sheet.
+# Writes outside these ranges (or to anything else) are refused before reaching the meter.
+LIMITS = {'UNIT': (0, 6), 'DP': (0, 4), 'OUT_T': (0, 2), 'ADDR': (0, 255), 'LOCK': (0, 1),
+          'LCUT': (0, 999), 'IDC_T': (1, 99), 'HYS': (0, 999)}
+
 UNITS = ['bar', 'kg/cm2', 'kPa', 'MPa', 'mmHg', 'PSI', 'inHg']
 RANGES = ['-1~2 bar', '-1~10 bar', '-1~50 bar', '0~250 bar']
 OUT_TYPES = ['H (hysteresis)', 'C (window)', 'D (dual)']
 BAUDS = [19200, 9600, 4800, 2400]
 PARITIES = ['N-8-2', 'N-8-1', 'E-8-1', 'O-8-1']
 SCALED = {'LCUT', 'HYS', 'ANLO', 'ANHI', 'P1', 'P2'}
+
+# name: (title, explanation) - shown by the GUI's info buttons.
+INFO = {
+    'RANGE': ('Sensor range',
+              'The pressure range of the sensor, fixed at the factory: -1~2 bar, -1~10 bar, -1~50 bar or '
+              '0~250 bar. Read-only.\n\nAccuracy is 0.25% of full scale, so a smaller range reads finer '
+              'at low pressure.'),
+    'UNIT': ('Display unit',
+             'Unit for the displayed pressure: bar, kg/cm2, kPa, MPa, mmHg, PSI or inHg.\n\n'
+             'LCUT, HYS, P-1, P-2, ANLO and ANHI are stored as plain numbers, not as pressure. It is not '
+             'yet verified whether the meter converts them when the unit changes, so read the meter and '
+             'check them (and the front-panel set points) after changing the unit.\n\n'
+             '1 bar = 14.5036 PSI = 100 kPa = 0.1 MPa = 1.01972 kg/cm2 = 750.062 mmHg = 29.53 inHg.'),
+    'DP': ('Decimal places',
+           'How many digits are shown after the decimal point (0-4).\n\n'
+           'Every pressure setting is stored as counts = value x 10^DP, so one step of DP moves them by a '
+           'factor of 10. This page rescales LCUT and HYS for you; P-1, P-2, ANLO and ANHI are front-panel '
+           'only and must be re-entered there.\n\n'
+           'The display shows at most 99999 counts (-19999 at the bottom), e.g. 999.99 with DP=2 or 99.999 '
+           'with DP=3. Choose DP so the highest test pressure still fits.'),
+    'OUT_T': ('Alarm output type',
+              'How the two alarm outputs react to pressure, using set points P-1 and P-2:\n\n'
+              'H (hysteresis): OUT1 turns on when pressure rises to P-2 and off when it falls to P-1, so '
+              'P-1/P-2 form the switching band. OUT2 is the opposite.\n\n'
+              'C (window): OUT1 is on while pressure is between P-1 and P-2 (HYS sets the dead band at each '
+              'edge). OUT2 is the opposite.\n\n'
+              'D (dual): two independent switches. OUT1 turns on above P-1, OUT2 above P-2, each with HYS '
+              'dead band.\n\n'
+              'RS-485 meters have no alarm wires, so on these units this only changes when the display '
+              'turns red or green.'),
+    'ADDR': ('Modbus address',
+             'The meter\'s address on the RS-485 line (0-255). Every meter sharing one DX-CP24 needs its own '
+             'address. Change it with "Change address to" on the Defaults tab or from the front panel.'),
+    'BAUD': ('Baud rate',
+             'Serial speed: 19200, 9600, 4800 or 2400. It must match the DX-CP24 bridge (19200), otherwise '
+             'the meter stops answering. This tool never changes it; use the front panel.'),
+    'PARI': ('Parity',
+             'Serial framing: N-8-2, N-8-1, E-8-1 or O-8-1. It must match the DX-CP24 bridge (N-8-2), '
+             'otherwise the meter stops answering. This tool never changes it; use the front panel.'),
+    'LOCK': ('Panel lock',
+             'YES locks the front-panel keys so nobody can change settings by hand. Set it last, after P-1 '
+             'and P-2 are entered on the panel.\n\nWrites over RS-485 should still work while locked '
+             '(not yet tested), so it can be set back to "no" from this page.'),
+    'LCUT': ('Display low cut',
+             'Readings below this value show as 0. It hides sensor noise near zero. Range 0-999 counts '
+             '(0-9.99 with DP=2).\n\nFor pressure-hold testing, keep it well below the smallest pressure '
+             'you need to see, or a slow leak toward zero will drop to 0 early.'),
+    'IDC_T': ('Display time',
+              'How often the reading updates, 0.1-9.9 s. Shorter reacts faster to pressure changes; longer '
+              'gives a steadier number. The value read over RS-485 is likely the displayed value, so it '
+              'updates at the same rate.'),
+    'HYS': ('Alarm hysteresis',
+            'Dead band around the set points, 0-999 counts, so the outputs don\'t chatter when pressure '
+            'sits right at a set point. Used in C and D alarm modes (see OUT_T).'),
+    'AZERO': ('Analog zero trim', 'Factory trim for the 4-20 mA output. Not used on RS-485 units and '
+              'never changed by this tool.'),
+    'ASPAN': ('Analog span trim', 'Factory trim for the 4-20 mA output. Not used on RS-485 units and '
+              'never changed by this tool.'),
+    'CJC': ('Internal temperature', 'Temperature inside the meter in 0.1 C (330 = 33.0 C). Live reading, '
+            'never written.'),
+    'ANLO': ('Analog output zero',
+             'Pressure that gives 4 mA on the analog output (-19999~99999 counts). RS-485 units have no '
+             'analog output, so it is unused.\n\n32-bit setting: it can only be changed from the front '
+             'panel (the meter does not accept 32-bit writes over RS-485).'),
+    'ANHI': ('Analog output span',
+             'Pressure that gives 20 mA on the analog output (-19999~99999 counts). RS-485 units have no '
+             'analog output, so it is unused.\n\n32-bit setting: it can only be changed from the front '
+             'panel (the meter does not accept 32-bit writes over RS-485).'),
+    'CODE': ('Pass code',
+             'Code (0-99999) asked for when entering the settings menu (hold ENT 3 s). 0 means no code.\n\n'
+             '32-bit setting: it can only be changed from the front panel.'),
+    'P1': ('Set point 1',
+           'Alarm set point 1 (-19999~99999 counts). What it does depends on OUT_T.\n\n32-bit setting: '
+           'set it from the front panel by holding the down/A-ADJ key for 5 s.'),
+    'P2': ('Set point 2',
+           'Alarm set point 2 (-19999~99999 counts). What it does depends on OUT_T.\n\n32-bit setting: '
+           'set it from the front panel by holding the down/A-ADJ key for 5 s (after P-1).'),
+}
 
 
 class ModbusError(Exception):
@@ -163,7 +246,12 @@ class Meter:
 
     def write_setting(self, name, value):
         if name in PANEL_ONLY:
-            raise ModbusError(f'{name} is 32-bit and cannot be written over Modbus')
+            raise ValueError(f'{name} is 32-bit and cannot be written over Modbus')
+        if name not in LIMITS:
+            raise ValueError(f'{name} is not writable by this tool')
+        lo, hi = LIMITS[name]
+        if not lo <= value <= hi:
+            raise ValueError(f'{name} must be {lo}-{hi}, got {value}')
         self.write(REGS[name][0], value)
 
     def read_pressure(self):
@@ -219,28 +307,50 @@ def log_meter(port, address, tag, settings, pressure):
                     format_pressure(pressure, settings), *settings.values()])
 
 
+def write_settings(meter, changes, out=print):
+    """Write {name: value}, ADDR last since it moves the meter, and return the read-back settings."""
+    for name in sorted(changes, key=lambda n: n == 'ADDR'):
+        out(f'Writing {name} = {changes[name]}')
+        meter.write_setting(name, changes[name])
+        if name == 'ADDR':
+            meter.address = changes[name]
+    return meter.read_settings()
+
+
 def apply_settings(meter, port, new_address=None, tag='', out=print):
     """Write DESIRED (and optionally a new address), verify by read-back, and log. True on success."""
     if new_address is not None and not 1 <= new_address <= 255:
         raise ValueError('new address must be 1-255')
     settings = meter.read_settings()
-    moving = new_address is not None and new_address != meter.address
-
+    changes = {}
     for name, value in diffs(settings, DESIRED).items():
         if name in PANEL_ONLY:
             out(f'Skipping {name}: set it to {describe(name, value, settings)} from the front panel')
-            continue
-        out(f'Writing {name} = {value}')
-        meter.write_setting(name, value)
-    if moving:
-        out(f'Writing ADDR = {new_address}')
-        meter.write_setting('ADDR', new_address)
-        meter.address = new_address
+        else:
+            changes[name] = value
+    if new_address is not None and new_address != meter.address:
+        changes['ADDR'] = new_address
 
+    settings = write_settings(meter, changes, out)
+    bad = list(diffs(settings, DESIRED))
+    if 'ADDR' in changes and settings['ADDR'] != changes['ADDR']:
+        bad.append('ADDR')
+    return finish(meter, port, tag, settings, bad, out)
+
+
+def apply_custom(meter, port, wanted, tag='', out=print):
+    """Write the chosen {name: value} settings that differ from the meter, verify, and log. True on success."""
     settings = meter.read_settings()
-    bad = diffs(settings, DESIRED)
-    if moving and settings['ADDR'] != new_address:
-        bad['ADDR'] = new_address
+    changes = {k: v for k, v in wanted.items() if settings[k] != v}
+    if not changes:
+        out('Meter already has these values; nothing written.')
+    settings = write_settings(meter, changes, out)
+    bad = [k for k, v in wanted.items() if settings[k] != v]
+    return finish(meter, port, tag, settings, bad, out)
+
+
+def finish(meter, port, tag, settings, bad, out):
+    """Report a failed verify, or log the meter and report success. True on success."""
     if bad:
         out(f'Verify FAILED for: {", ".join(bad)}')
         return False

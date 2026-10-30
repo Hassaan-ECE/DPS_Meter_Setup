@@ -69,10 +69,12 @@ ship with different comm settings than the sheet says; no new meter has been tes
 
 | File | What |
 |------|------|
-| `dps_setup.py` | Core + CLI (pyserial, hand-rolled Modbus RTU — pymodbus avoided because it treats id 0 as broadcast). `DESIRED` block at top = the defaults (copied from the user's already-configured reference meter; user confirmed those are the defaults). Never writes RANGE/AZERO/ASPAN/CJC/BAUD/PARI; ADDR only via `--new-address`; 32-bit settings are checked and reported as "set from the front panel". Appends every successful apply to `dps_meters.csv` (next to the script, or next to the exe when frozen). |
-| `dps_gui.py` | PyQt6 front end: port picker (auto-selects CH340), address, "Change address to", serial/tag, Read, Set Defaults, log. Serial work runs in a QThread. |
+| `dps_setup.py` | Core + CLI (pyserial, hand-rolled Modbus RTU — pymodbus avoided because it treats id 0 as broadcast). `DESIRED` block at top = the defaults (copied from the user's already-configured reference meter; user confirmed those are the defaults). Never writes RANGE/AZERO/ASPAN/CJC/BAUD/PARI; ADDR only via `--new-address`; 32-bit settings are checked and reported as "set from the front panel". `Meter.write_setting` refuses anything not in `LIMITS` (ranges from the register sheet). `INFO` = per-setting help text used by the GUI. `apply_custom()` writes an arbitrary subset of settings. Appends every successful apply to `dps_meters.csv` (next to the script, or next to the exe when frozen). |
+| `dps_gui.py` | PyQt6 front end: port picker (auto-selects CH340), address, serial/tag, then two tabs. **Defaults**: "Change address to", Read, Set Defaults. **Settings**: one row per setting (meter value / editor / default / ? info button); editable = UNIT, DP, LCUT, IDC_T, OUT_T, HYS, LOCK, the rest shown read-only; changed rows highlighted, Load defaults / Revert / Write N change(s) with a confirm dialog. Changing DP rescales LCUT/HYS to keep their pressure. Shared log below. Serial work runs in a QThread. Settings-tab writes were tested against a fake meter only, not hardware yet. |
 | `build_exe.py` | PyInstaller build via a generated spec that strips unused Qt/SSL files. Default = folder build → `dist\DPS_Setup\DPS_Setup.exe` + `dist\DPS_Setup.zip` (the zip is what gets shared). `--onefile` exists but see gotchas. |
 | `dps_meters.csv` | Commissioning log. First row = the reference meter, tag `REFERENCE`. |
+| `docs/DPS_Settings_Guide.pptx` | 10-slide guide: what the meter can do, what every setting means, tuning advice, register map. Copy of the one in OneDrive. |
+| `docs/DPS-2.5SPD3_Modbus_Register_Sheet.pdf` | Copy of the scanned register-map sheet from the box (the only source for the map). |
 | `docs/build_deck.js` | pptxgenjs generator for `DPS_Settings_Guide.pptx` (needs `pptxgenjs react react-dom react-icons sharp` in a local node_modules and the pptx skill's `apply_theme.js`; run with `NODE_PATH` pointing at that node_modules). |
 
 ## Commands (run Python from the Bash tool)
@@ -113,4 +115,8 @@ PyInstaller 6.21 installed.
 4. Tuning suggestions in the settings deck, not applied: IDC_T 5.0 s → ~1.0 s, LOCK = YES after setup,
    pick a sensor range closer to the hold pressure. User still deciding target values.
 5. Possible GUI addition: an address scan ("Find meter") at 19200 for meters not at address 0.
-6. Not a git repo yet.
+6. Git repo: https://github.com/Hassaan-ECE/DPS_Meter_Setup (public, by the user's choice; includes the
+   register sheet PDF and settings deck in `docs/`). `dist/` is git-ignored — share the zip via a Release.
+7. Team share: `S:\Engineering\Public\Syed_Hassaan_Shah\DPS_Meter_Setup\` = `DPS_Setup.zip` + `README.md`
+   (install steps) + `drivers\CH340\CH341SER.EXE`. After a rebuild, copy the new `dist\DPS_Setup.zip`
+   there and bump the date in that README.
